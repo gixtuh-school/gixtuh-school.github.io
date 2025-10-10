@@ -43,6 +43,10 @@
             display: flex;
             gap: 10px;
         }
+        .websocket {
+            display: flex;
+            gap: 10px;
+        }
     </style>
 </head>
 <body>
@@ -54,6 +58,12 @@
         <button id="go-btn">Go</button>
     </div>
     
+    <div class="websocket">
+        <input type="text" id="custom-websocket" placeholder="Enter custom websocket here.">
+        <button id="use-btn">Use</button>
+        <button id="default-btn">Default</button>
+    </div>
+    
     <!-- Preset buttons -->
     <div>
         <button>https://example.com</button>
@@ -63,24 +73,85 @@
         <button>https://tenor.com</button>
     </div>
     
+    
     <p id="status">Connecting...</p>
     <iframe id="viewer" height=640></iframe>
     
     <script>
-        const ws = new WebSocket('wss://onix-server-official.onrender.com');
+        let customwstext = "wss://onix-server-official.onrender.com";
+        let ws = new WebSocket(customwstext);
         const status = document.getElementById('status');
         const iframe = document.getElementById('viewer');
         let currenturl;
+         
+        // 🔁 Function to bind listeners to a given socket
+        function bindSocket(socket) {
+            socket.addEventListener("open", () => {
+                setTimeout(() => {
+                status.textContent = `✅ Connected to ${socket.url}`;
+                }, 500)
+            });
+            
+            socket.addEventListener("close", () => {
+                status.textContent = "❌ Disconnected.";
+            });
+            
+            socket.addEventListener("error", (err) => {
+                console.error(err);
+                status.textContent = "⚠️ WebSocket error. Check URL.";
+            });
+            
+            socket.addEventListener("message", (event) => {
+                iframe.srcdoc = event.data;
+                iframe.onload = () => {
+                    try {
+                        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                        
+                        // link handling
+                        iframeDoc.querySelectorAll('[href]').forEach(el => {
+                            const rawHref = el.getAttribute('href');
+                            if (!rawHref) return;
+                            
+                            el.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                const resolved = new URL(rawHref, currenturl).href;
+                                currenturl = resolved;
+                                status.textContent = `🌐 Loading ${resolved}`;
+                                socket.send(resolved);
+                            });
+                        });
+                        
+                        // form handling
+                        iframeDoc.querySelectorAll('form').forEach(form => {
+                            form.addEventListener('submit', (e) => {
+                                e.preventDefault();
+                                const action = form.getAttribute('action') || currenturl;
+                                const params = new URLSearchParams(new FormData(form)).toString();
+                                const full = action.includes('?') ? `${action}&${params}` : `${action}?${params}`;
+                                currenturl = full;
+                                status.textContent = `🌐 Submitting form: ${full}`;
+                                socket.send(full);
+                            });
+                        });
+                        
+                    } catch (err) {
+                        console.warn('iframe sandbox blocked access:', err);
+                    }
+                };
+            });
+        }
         
-        // main-page buttons
+        // connect the default socket
+        bindSocket(ws);
+        
+        // handle preset buttons
         document.querySelectorAll('button').forEach(el => {
+            const url = el.textContent.trim();
+            if (!url.startsWith('http')) return; // skip the non-URL buttons
             el.addEventListener('click', () => {
-                if (new URL(el.textContent.trim())) {
-                    const url = el.textContent.trim();
-                    status.textContent = `🌐 Loading ${url}...`;
-                    currenturl = url;
-                    ws.send(url);
-                }
+                currenturl = url;
+                status.textContent = `🌐 Loading ${url}...`;
+                ws.send(url);
             });
         });
         
@@ -89,70 +160,50 @@
         document.getElementById('go-btn').addEventListener('click', () => {
             const url = input.value.trim();
             if (!url) return;
-            status.textContent = `🌐 Loading ${url}...`;
             currenturl = url;
+            status.textContent = `🌐 Loading ${url}...`;
             ws.send(url);
         });
         
+        // custom WebSocket input ✅
+        const customws = document.getElementById('custom-websocket');
+        document.getElementById('use-btn').addEventListener('click', () => {
+            const newWSText = customws.value.trim();
+            if (!newWSText) return;
+            
+            status.textContent = `☁️ Switching to ${newWSText}...`;
+            
+            try {
+                ws.close(); // close old socket if still open
+            } catch {}
+            
+            ws = new WebSocket(newWSText);
+            bindSocket(ws);
+        });
+        document.getElementById('default-btn').addEventListener('click', () => {
+            const newWSText = "wss://onix-server-official.onrender.com/"
+            if (!newWSText) return;
+            
+            status.textContent = `☁️ Switching to ${newWSText}...`;
+            
+            try {
+                ws.close(); // close old socket if still open
+            } catch {}
+            
+            ws = new WebSocket(newWSText);
+            bindSocket(ws);
+        });
+        
+
         input.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 document.getElementById('go-btn').click();
             }
         });
-        
-        ws.addEventListener("open", () => {
-            status.textContent = "Connected!"
-            ws.send("https://ifconfig.me")
-        })
-
-        // handle messages from server
-        ws.addEventListener('message', (event) => {
-            
-            iframe.srcdoc = event.data;
-            
-            iframe.onload = () => {
-                try {
-                    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-                    
-                    // links
-                    iframeDoc.querySelectorAll('[href]').forEach(el => {
-                        const rawHref = el.getAttribute('href');
-                        if (!rawHref) return;
-                        
-                        el.addEventListener('click', (event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            
-                            const resolvedUrl = new URL(rawHref, currenturl).href;
-                            currenturl = resolvedUrl;
-                            
-                            status.textContent = `🌐 Iframe clicked: ${resolvedUrl}`;
-                            ws.send(resolvedUrl);
-                        });
-                    });
-                    
-                    // forms
-                    iframeDoc.querySelectorAll('form').forEach(form => {
-                        form.addEventListener('submit', (event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            
-                            const actionUrl = form.getAttribute('action') || currenturl;
-                            const formData = new FormData(form);
-                            const params = new URLSearchParams(formData).toString();
-                            
-                            const fullUrl = actionUrl.includes('?') ? `${actionUrl}&${params}` : `${actionUrl}?${params}`;
-                            status.textContent = `🌐 Iframe form submitted: ${currenturl+fullUrl}`;
-                            ws.send(currenturl+fullUrl);
-                            
-                            currenturl = currenturl+fullUrl ;
-                        });
-                    });
-                    
-                } catch (e) {
-                    console.warn('Cannot access iframe DOM:', e);
-                }
-            };
+        customws.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('use-btn').click();
+            }
         });
     </script>
 </body>
