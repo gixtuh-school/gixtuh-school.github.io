@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Onix Secure Browser</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 8px;
+            border: none;
+            background: #333;
+            color: white;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #555;
+        }
+        input {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            flex: 1;
+        }
+        iframe {
+            width: 100%;
+            border: 2px solid #ccc;
+            border-radius: 10px;
+            background: white;
+        }
+        #status {
+            font-size: 0.9em;
+            color: gray;
+        }
+        .url-bar {
+            display: flex;
+            gap: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Onix Secure Browser</h1>
+    
+    <!-- Custom URL input -->
+    <div class="url-bar">
+        <input type="text" id="custom-url" placeholder="Enter custom URL here">
+        <button id="go-btn">Go</button>
+    </div>
+    
+    <!-- Preset buttons -->
+    <div>
+        <button>https://example.com</button>
+        <button>https://wikipedia.org</button>
+        <button>https://gixtuh-school.github.io</button>
+        <button>https://google.com</button>
+        <button>https://ifconfig.me</button>
+    </div>
+    
+    <p id="status">Connecting...</p>
+    <iframe id="viewer" height=640></iframe>
+    
+    <script>
+        const ws = new WebSocket('wss://proxy-server-vys9.onrender.com/');
+        const status = document.getElementById('status');
+        const iframe = document.getElementById('viewer');
+        let currenturl;
+        
+        // main-page buttons
+        document.querySelectorAll('button').forEach(el => {
+            el.addEventListener('click', () => {
+                if (new URL(el.textContent.trim())) {
+                    const url = el.textContent.trim();
+                    status.textContent = `🌐 Loading ${url}...`;
+                    currenturl = url;
+                    ws.send(url);
+                }
+            });
+        });
+        
+        // custom URL input
+        const input = document.getElementById('custom-url');
+        document.getElementById('go-btn').addEventListener('click', () => {
+            const url = input.value.trim();
+            if (!url) return;
+            status.textContent = `🌐 Loading ${url}...`;
+            currenturl = url;
+            ws.send(url);
+        });
+        
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('go-btn').click();
+            }
+        });
+        
+        ws.addEventListener("open", () => {
+            status.textContent = "Connected!"
+        })
+
+        // handle messages from server
+        ws.addEventListener('message', (event) => {
+            if (event.data === 'error') {
+                iframe.srcdoc = `<h1 style="color:red">⚠️ Error fetching website</h1>`;
+                return;
+            }
+            
+            iframe.srcdoc = event.data;
+            
+            iframe.onload = () => {
+                try {
+                    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                    
+                    // links
+                    iframeDoc.querySelectorAll('[href]').forEach(el => {
+                        const rawHref = el.getAttribute('href');
+                        if (!rawHref) return;
+                        
+                        el.addEventListener('click', (event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            
+                            const resolvedUrl = new URL(rawHref, currenturl).href;
+                            currenturl = resolvedUrl;
+                            
+                            status.textContent = `🌐 Iframe clicked: ${resolvedUrl}`;
+                            ws.send(resolvedUrl);
+                        });
+                    });
+                    
+                    // forms
+                    iframeDoc.querySelectorAll('form').forEach(form => {
+                        form.addEventListener('submit', (event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            
+                            const actionUrl = form.getAttribute('action') || currenturl;
+                            const formData = new FormData(form);
+                            const params = new URLSearchParams(formData).toString();
+                            
+                            const fullUrl = actionUrl.includes('?') ? `${actionUrl}&${params}` : `${actionUrl}?${params}`;
+                            status.textContent = `🌐 Iframe form submitted: ${currenturl+fullUrl}`;
+                            ws.send(currenturl+fullUrl);
+                            
+                            currenturl = currenturl+fullUrl ;
+                        });
+                    });
+                    
+                } catch (e) {
+                    console.warn('Cannot access iframe DOM:', e);
+                }
+            };
+        });
+    </script>
+</body>
+</html>
