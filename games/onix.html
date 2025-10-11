@@ -68,14 +68,16 @@
     <div>
         <button>https://example.com</button>
         <button>https://wikipedia.org</button>
-        <button>https://mojeek.com</button>
+        <button>https://search.brave.com</button>
         <button>https://ifconfig.me</button>
         <button>https://tenor.com</button>
     </div>
+    <br />
+    <button onclick="iframe.requestFullscreen()">Fullscreen</button>
     
     
     <p id="status">Connecting...</p>
-    <iframe id="viewer" height=640></iframe>
+    <iframe id="viewer" height=640 sandbox="allow-scripts allow-forms allow-same-origin"></iframe>
     
     <script>
         let customwstext = "wss://onix-server-official.onrender.com";
@@ -83,12 +85,28 @@
         const status = document.getElementById('status');
         const iframe = document.getElementById('viewer');
         let currenturl;
-         
+        
+        setInterval(() => {
+            try {
+                const loc = iframe.contentWindow.location;
+                if (loc.protocol === "file:") {
+                    console.warn("Detected file:// protocol — switching back to HTTPS!");
+                    const safeUrl = "https://" + loc.hostname + loc.pathname + loc.search + loc.hash;
+                    ws.send(safeUrl)
+                }
+            } catch (err) {
+                const loc = new URL(currenturl)
+                console.warn("Detected file:// protocol — switching back to HTTPS!");
+                const safeUrl = "https://" + loc.hostname + loc.pathname + loc.search + loc.hash;
+                ws.send(safeUrl)
+            }
+        }, 500);
+        
         // 🔁 Function to bind listeners to a given socket
         function bindSocket(socket) {
             socket.addEventListener("open", () => {
                 setTimeout(() => {
-                status.textContent = `✅ Connected to ${socket.url}`;
+                    status.textContent = `✅ Connected to ${socket.url}`;
                 }, 500)
             });
             
@@ -105,34 +123,68 @@
                 iframe.srcdoc = event.data;
                 iframe.onload = () => {
                     try {
-                        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                        const iframeWin = iframe.contentWindow;
+                        const iframeDoc = iframeWin.document;
+                        const baseOrigin = parent.location.origin.replace(/^file:/, "https:");
                         
-                        // link handling
-                        iframeDoc.querySelectorAll('[href]').forEach(el => {
-                            const rawHref = el.getAttribute('href');
-                            if (!rawHref) return;
-                            
-                            el.addEventListener('click', (e) => {
+                        const sendSmartURL = (url) => {
+                            let resolved;
+                            try {
+                                // absolute URL
+                                resolved = new URL(url).href;
+                            } catch {
+                                // relative URL fallback
+                                if (!currenturl || !currenturl.startsWith('http')) currenturl = 'https://example.com/';
+                                resolved = new URL(url, currenturl).href;
+                            }
+                            currenturl = resolved;
+                            status.textContent = `🌐 Loading ${resolved}`;
+                            ws.send(resolved);
+                        };
+                        
+                        // Links
+                        iframeDoc.querySelectorAll('a[href]').forEach(a => {
+                            a.addEventListener('click', (e) => {
                                 e.preventDefault();
-                                const resolved = new URL(rawHref, currenturl).href;
-                                currenturl = resolved;
-                                status.textContent = `🌐 Loading ${resolved}`;
-                                socket.send(resolved);
+                                sendSmartURL(a.getAttribute('href'));
                             });
                         });
                         
-                        // form handling
-                        iframeDoc.querySelectorAll('form').forEach(form => {
-                            form.addEventListener('submit', (e) => {
+                        // Inline onclick="window.location.href='...'"
+                        iframeDoc.querySelectorAll('[onclick]').forEach(el => {
+                            const old = el.onclick;
+                            el.onclick = (e) => {
                                 e.preventDefault();
-                                const action = form.getAttribute('action') || currenturl;
-                                const params = new URLSearchParams(new FormData(form)).toString();
+                                try {
+                                    const onclickAttr = el.getAttribute('onclick') || '';
+                                    const hrefRegex = /window\.location\.href\s*=\s*['"]([^'"]+)['"]/g;
+                                    let match;
+                                    while ((match = hrefRegex.exec(onclickAttr)) !== null) {
+                                        sendSmartURL(match[1]);
+                                    }
+                                    return old?.call(el, e);
+                                } catch {}
+                            };
+                        });
+                        
+                        // JS navigation
+                        const loc = iframeWin.location;
+                        ['assign','replace'].forEach(method => {
+                            const orig = loc[method].bind(loc);
+                            loc[method] = (url) => { sendSmartURL(url); return orig(url); };
+                        });
+                        
+                        // Form submissions
+                        iframeDoc.querySelectorAll('form').forEach(f => {
+                            f.addEventListener('submit', (e) => {
+                                e.preventDefault();
+                                const action = f.getAttribute('action') || iframeWin.location.href;
+                                const params = new URLSearchParams(new FormData(f)).toString();
                                 const full = action.includes('?') ? `${action}&${params}` : `${action}?${params}`;
-                                currenturl = full;
-                                status.textContent = `🌐 Submitting form: ${full}`;
-                                socket.send(full);
+                                sendSmartURL(full);
                             });
                         });
+                        
                         
                     } catch (err) {
                         console.warn('iframe sandbox blocked access:', err);
@@ -173,38 +225,26 @@
             
             status.textContent = `☁️ Switching to ${newWSText}...`;
             
-            try {
-                ws.close(); // close old socket if still open
-            } catch {}
+            try { ws.close(); } catch {}
             
             ws = new WebSocket(newWSText);
             bindSocket(ws);
         });
         document.getElementById('default-btn').addEventListener('click', () => {
-            const newWSText = "wss://onix-server-official.onrender.com/"
+            const newWSText = "wss://onix-server-official.onrender.com/";
             if (!newWSText) return;
             
             status.textContent = `☁️ Switching to ${newWSText}...`;
             
-            try {
-                ws.close(); // close old socket if still open
-            } catch {}
+            try { ws.close(); } catch {}
             
             ws = new WebSocket(newWSText);
             bindSocket(ws);
         });
         
-
-        input.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                document.getElementById('go-btn').click();
-            }
-        });
-        customws.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                document.getElementById('use-btn').click();
-            }
-        });
+        input.addEventListener('keypress', (e) => { if (e.key === 'Enter') document.getElementById('go-btn').click(); });
+        customws.addEventListener('keypress', (e) => { if (e.key === 'Enter') document.getElementById('use-btn').click(); });
     </script>
+    
 </body>
 </html>
