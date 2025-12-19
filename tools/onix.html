@@ -239,7 +239,7 @@
                                 resolved = new URL(url, currenturl).href;
                             }
                             currenturl = resolved;
-                            status.textContent = `🌐 Loading ${resolved}`;
+                            status.textContent = `IFrame caused redirection to: ${resolved}`;
                             ws.send(resolved);
                         };
 
