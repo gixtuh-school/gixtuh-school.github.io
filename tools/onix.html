@@ -182,7 +182,8 @@
                 const sandbox = e.target.checked
                     ? "allow-scripts allow-forms allow-same-origin"
                     : "allow-forms allow-same-origin";
-                refreshIframe(iframe.srcdoc, sandbox);
+                ws.send(currenturl)
+                refreshIframe("Refreshing page", sandbox);
             }
         });
 
