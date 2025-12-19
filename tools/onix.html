@@ -147,7 +147,7 @@
 
 
     <p id="status">Connecting...</p>
-    <iframe id="viewer" height=640 sandbox="allow-forms allow-modals allow-same-origin"></iframe>
+    <iframe id="viewer" height=640 sandbox="allow-forms allow-modals"></iframe>
 
     <script>
         let customwstext = "wss://onix-server-official.onrender.com";
@@ -180,8 +180,8 @@
             }
             if (enabled) {
                 const sandbox = e.target.checked
-                    ? "allow-scripts allow-forms allow-same-origin"
-                    : "allow-forms allow-same-origin";
+                    ? "allow-scripts allow-forms allow-same-origin allow-modals"
+                    : "allow-forms";
                 ws.send(currenturl)
                 refreshIframe("Refreshing page", sandbox);
             }
@@ -207,17 +207,17 @@
         function bindSocket(socket) {
             socket.addEventListener("open", () => {
                 setTimeout(() => {
-                    status.textContent = `✅ Connected to ${socket.url}`;
+                    status.textContent = `Client connected to websocket ${socket.url}`;
                 }, 500)
             });
 
             socket.addEventListener("close", () => {
-                status.textContent = "❌ Disconnected.";
+                status.textContent = "Client disconnected from websocket.";
             });
 
             socket.addEventListener("error", (err) => {
                 console.error(err);
-                status.textContent = "⚠️ WebSocket error. Check URL.";
+                status.textContent = "Error loading the proxy websocket.";
             });
 
             socket.addEventListener("message", (event) => {
