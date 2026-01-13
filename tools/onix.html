@@ -181,7 +181,7 @@
             if (enabled) {
                 const sandbox = e.target.checked
                     ? "allow-scripts allow-forms allow-same-origin allow-modals"
-                    : "allow-forms";
+                    : "allow-forms allow-same-origin allow-modals";
                 ws.send(currenturl)
                 refreshIframe("Refreshing page", sandbox);
             }
