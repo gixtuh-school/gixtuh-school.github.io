@@ -150,7 +150,7 @@
     <iframe id="viewer" height=640 sandbox="allow-forms allow-same-origin allow-modals"></iframe>
 
     <script>
-        let customwstext = "wss://onix-server-official.onrender.com";
+        let customwstext = "wss://osb-legacy.onrender.com";
         let ws = new WebSocket(customwstext);
         const status = document.getElementById('status');
         let iframe = document.getElementById('viewer');
@@ -331,7 +331,7 @@
             bindSocket(ws);
         });
         document.getElementById('default-btn').addEventListener('click', () => {
-            const newWSText = "wss://onix-server-official.onrender.com/";
+            const newWSText = "wss://osb-legacy.onrender.com/";
             if (!newWSText) return;
 
             status.textContent = `Websocket switched to ${newWSText} (default)`;
@@ -347,5 +347,6 @@
     </script>
 
 </body>
+
 
 </html>
