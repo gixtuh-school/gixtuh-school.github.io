@@ -118,7 +118,8 @@
 </head>
 
 <body>
-    <h1>Onix Secure Browser</h1>
+    <h1>Onix Secure Browser (legacy)</h1>
+    <h4>The new version is at <a href="https://onixsb1.share.zrok.io">https://onixsb1.share.zrok.io</a></h4>
 
     <!-- Custom URL input -->
     <div class="url-bar">
@@ -224,73 +225,52 @@
                 iframe.srcdoc = event.data;
                 iframe.onload = () => {
                     try {
-                        const iframeWin = iframe.contentWindow;
-                        const iframeDoc = iframeWin.document;
-                        const baseOrigin = parent.location.origin.replace(/^file:/, "https:");
+                        const win = iframe.contentWindow;
+                        const doc = win.document;
 
-                        const sendSmartURL = (url) => {
+                        function sendSmartURL(url) {
                             let resolved;
                             try {
                                 // absolute URL
                                 resolved = new URL(url).href;
                             } catch {
-                                // relative URL fallback
-                                if (!currenturl || !currenturl.startsWith('http')) currenturl = 'https://example.com/';
-                                resolved = new URL(url, currenturl).href;
+                                // relative URL -> resolve against the current iframe location
+                                const base = currenturl || "https://gixtuh.vercel.app/";
+                                resolved = new URL(url, base).href;
                             }
                             currenturl = resolved;
-                            status.textContent = `IFrame caused redirection to: ${resolved}`;
                             ws.send(resolved);
-                        };
+                        }
 
-                        // Links
-                        iframeDoc.querySelectorAll('a[href]').forEach(a => {
-                            a.addEventListener('click', (e) => {
+                        // hijack links
+                        doc.querySelectorAll("a[href]").forEach(a => {
+                            a.onclick = e => {
                                 e.preventDefault();
-                                sendSmartURL(a.getAttribute('href'));
-                            });
-                        });
-
-                        // Inline onclick="window.location.href='...'"
-                        iframeDoc.querySelectorAll('[onclick]').forEach(el => {
-                            const old = el.onclick;
-                            el.onclick = (e) => {
-                                e.preventDefault();
-                                try {
-                                    const onclickAttr = el.getAttribute('onclick') || '';
-                                    const hrefRegex = /window\.location\.href\s*=\s*['"]([^'"]+)['"]/g;
-                                    let match;
-                                    while ((match = hrefRegex.exec(onclickAttr)) !== null) {
-                                        sendSmartURL(match[1]);
-                                    }
-                                    return old?.call(el, e);
-                                } catch { }
+                                sendSmartURL(a.getAttribute("href"));
                             };
                         });
 
-                        // JS navigation
-                        const loc = iframeWin.location;
-                        ['assign', 'replace'].forEach(method => {
-                            const orig = loc[method].bind(loc);
-                            loc[method] = (url) => { sendSmartURL(url); return orig(url); };
-                        });
-
-                        // Form submissions
-                        iframeDoc.querySelectorAll('form').forEach(f => {
-                            f.addEventListener('submit', (e) => {
+                        // hijack forms
+                        doc.querySelectorAll("form").forEach(f => {
+                            f.onsubmit = e => {
                                 e.preventDefault();
-                                const action = f.getAttribute('action') || iframeWin.location.href;
+                                const action = f.action || win.location.href;
                                 const params = new URLSearchParams(new FormData(f)).toString();
-                                const full = action.includes('?') ? `${action}&${params}` : `${action}?${params}`;
-                                sendSmartURL(full);
-                            });
+                                sendSmartURL(action + (action.includes("?") ? "&" : "?") + params);
+                            };
                         });
 
+                        // JS redirects
+                        ["assign", "replace"].forEach(method => {
+                            const orig = win.location[method].bind(win.location);
+                            win.location[method] = url => { sendSmartURL(url); return orig(url); };
+                        });
 
-                    } catch (err) {
-                        console.warn('iframe sandbox blocked access:', err);
+                    } catch (e) {
+                        console.warn("iframe sandbox blocked access", e);
                     }
                 };
+
             });
         }
 
